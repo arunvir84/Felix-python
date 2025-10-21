@@ -90,6 +90,8 @@ v.cell_beta = v.cell_angle_beta[0]*np.pi/180.0
 v.cell_gamma = v.cell_angle_gamma[0]*np.pi/180.0
 n_basis = len(v.atom_site_label)
 
+
+
 # symmetry operations
 if "space_group_symop_operation_xyz" in cif_dict:
     v.symmetry_matrix, v.symmetry_vector = px.symop_convert(
@@ -130,6 +132,17 @@ if "atom_site_b_iso_or_equiv" in cif_dict:
 elif "atom_site_u_iso_or_equiv" in cif_dict:
     v.basis_B_iso = np.array([tup[0] for tup in
                               v.atom_site_u_iso_or_equiv])*8*(np.pi**2)
+    
+def build_lattice_matrix(a, b, c, alpha, beta, gamma):
+    a1 = np.array([a, 0.0, 0.0])
+    a2 = np.array([b * np.cos(gamma), b * np.sin(gamma), 0.0])
+    cx = c * np.cos(beta)
+    cy = c * (np.cos(alpha) - np.cos(beta) * np.cos(gamma)) / np.sin(gamma)
+    cz2 = c * c - cx * cx - cy * cy
+    cz = np.sqrt(max(cz2, 0.0))
+    a3 = np.array([cx, cy, cz])
+    A = np.column_stack((a1, a2, a3))
+    return A
 
 # occupancy, assume it's unity if not specified
 if v.atom_site_occupancy is not None:
