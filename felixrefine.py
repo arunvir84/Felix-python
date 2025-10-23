@@ -52,7 +52,7 @@ v.iter_count = 0
 # cif_dict is a dictionary of value-key pairs.  values are given as tuples
 # with the second number the uncertainty in the first.  Nothing is currently
 # done with these uncertainties...
-cif_dict = px.read_cif('felix.cif')
+cif_dict = px.read_cif('anisotropic.cif')
 v.update_from_dict(cif_dict)
 # ====== extract cif data into working variables v
 v.space_group = v.symmetry_space_group_name_h_m
@@ -132,6 +132,43 @@ if "atom_site_b_iso_or_equiv" in cif_dict:
 elif "atom_site_u_iso_or_equiv" in cif_dict:
     v.basis_B_iso = np.array([tup[0] for tup in
                               v.atom_site_u_iso_or_equiv])*8*(np.pi**2)
+   
+v.aniso_matrix = np.zeros((n_basis, 3, 3)) 
+
+v.aniso_matrix[2] = np.array([
+    [v.basis_B_iso[0],v.basis_B_iso[0],v.basis_B_iso[0]],
+    [v.basis_B_iso[0],v.basis_B_iso[0],v.basis_B_iso[0]],
+    [v.basis_B_iso[0],v.basis_B_iso[0],v.basis_B_iso[0]]
+    ])
+
+# Anisotropic Debye-Waller factor
+if v.atom_site_aniso_u_11 is not None:
+    v.aniso_U11 = np.array([tup[0] for tup in v.atom_site_aniso_u_11])
+
+    v.aniso_U22 = np.array([tup[0] for tup in v.atom_site_aniso_u_22])
+
+    v.aniso_U33 = np.array([tup[0] for tup in v.atom_site_aniso_u_33])
+
+    v.aniso_U12 = np.array([tup[0] for tup in v.atom_site_aniso_u_12])
+
+    v.aniso_U13 = np.array([tup[0] for tup in v.atom_site_aniso_u_13])
+
+    v.aniso_U23 = np.array([tup[0] for tup in v.atom_site_aniso_u_23])
+
+    
+    
+    for i in range(len(v.aniso_U11)):
+        v.aniso_matrix[i] = \
+            np.column_stack((np.array([v.aniso_U11[i], v.aniso_U12[i], v.aniso_U13[i]]),
+                             np.array([v.aniso_U12[i], v.aniso_U22[i], v.aniso_U23[i]]),
+                             np.array([v.aniso_U13[i], v.aniso_U23[i], v.aniso_U33[i]])))
+
+print(v.aniso_matrix)
+
+print("Nb and O anisotropic data:")
+print("Labels:", v.atom_site_aniso_label)
+print("U11:", v.atom_site_aniso_u_11)
+print("iso:", v.atom_site_u_iso_or_equiv)
     
 def build_lattice_matrix(a, b, c, alpha, beta, gamma):
     a1 = np.array([a, 0.0, 0.0])
