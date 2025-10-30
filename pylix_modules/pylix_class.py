@@ -80,6 +80,15 @@ class Cif:
         self.atom_site_occupancy = None
         self.atom_site_u_iso_or_equiv = None
         self.atom_site_wyckoff_symbol = None
+        self.atom_site_aniso_label = None
+        self.atom_site_aniso_type_symbol = None
+        self.atom_site_aniso_u_11 = None
+        self.atom_site_aniso_u_22 = None
+        self.atom_site_aniso_u_33 = None
+        self.atom_site_aniso_u_12 = None
+        self.atom_site_aniso_u_13 = None
+        self.atom_site_aniso_u_23 = None
+        self.aniso_matrix = None
 
 # class cell:
 #     def __init__(self):

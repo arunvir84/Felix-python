@@ -1103,7 +1103,7 @@ def Fg_matrix(n_hkl, scatter_factor_method, n_atoms, atom_coordinate,
         elif absorption_method == 2:
             f_g_prime = 1j * f_thomas(g_magnitude, B_iso[i],
                                       atomic_number[i], electron_velocity)
-    
+
         # The Structure Factor Equation
         # multiply by Debye-Waller factor, phase and occupancy
         #Fg_matrix = Fg_matrix+((f_g + f_g_prime) * phase[:, :, i] *
@@ -1111,17 +1111,13 @@ def Fg_matrix(n_hkl, scatter_factor_method, n_atoms, atom_coordinate,
         #                       np.exp(-B_iso[i] *
         #                              (g_magnitude**2)/(16*np.pi**2)))
         
-        # Anisotropic structure factor
-        gUg = np.einsum('ajk,ij,ik->ai', aniso_matrix, g_pool, g_pool)
-        T_factor = np.exp(- 2 * gUg * np.pi**2)
+        gUg = np.einsum('ik,ajk,ij->ai', g_pool, aniso_matrix, g_pool)
+        T_aniso = np.exp(-0.5 * gUg)
         
-        Fg_matrix += ((f_g + f_g_prime) *
+        Fg_matrix += ((f_g[i] + f_g_prime[i]) *
                   phase[:, :, i] *
                   occupancy[i] *
-                  T_factor[i, :][:, np.newaxis])
-        
-        
-        
+                  T_aniso[i, :][:, np.newaxis])
         
         
 
