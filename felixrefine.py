@@ -131,11 +131,14 @@ if "atom_site_b_iso_or_equiv" in cif_dict:
     v.basis_B_iso = np.array([tup[0] for tup in v.atom_site_b_iso_or_equiv])
 elif "atom_site_u_iso_or_equiv" in cif_dict:
     v.basis_B_iso = np.array([tup[0] for tup in
-                              v.atom_site_u_iso_or_equiv])
+                              v.atom_site_u_iso_or_equiv]) * 8 * np.pi**2
    
 v.aniso_matrix = np.zeros((n_basis, 3, 3)) 
 
-v.aniso_matrix[2] = np.diag([v.basis_B_iso[0],v.basis_B_iso[0],v.basis_B_iso[0]])
+v.basis_U_iso = np.array([tup[0] for tup in
+                          v.atom_site_u_iso_or_equiv])
+
+v.aniso_matrix[2] = np.diag([v.basis_U_iso[0],v.basis_U_iso[0],v.basis_U_iso[0]])
 
 # Anisotropic Debye-Waller factor
 if v.atom_site_aniso_u_11 is not None:

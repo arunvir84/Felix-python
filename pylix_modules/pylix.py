@@ -336,6 +336,9 @@ def unique_atom_positions(symmetry_matrix, symmetry_vector, basis_atom_label,
             idx = s * n_basis_atoms + a
             U = basis_aniso_matrix[a]
             all_aniso_matrix[idx] = R @ U @ R.T
+         
+    #all_aniso_matrix = np.einsum('sij,ajk,skl->s a i l', symmetry_matrix, basis_aniso_matrix, symmetry_matrix)
+    #all_aniso_matrix = all_aniso_matrix.reshape(n_symmetry_operations * n_basis_atoms, 3, 3)
     
     # Reduce to the set of unique fractional atomic positions using tol
     dist_matrix = np.linalg.norm(all_atom_position[:, np.newaxis, :] -
@@ -1079,6 +1082,9 @@ def Fg_matrix(n_hkl, scatter_factor_method, n_atoms, atom_coordinate,
     # all atom types and modifying scattering factor methods to accept 2D + 1D
     # arrays [n_hkl, n_hkl] & [n_atoms],
     # returning an array [n_hkl, n_hkl, n_atoms])
+    gUg = np.einsum('ajk,ij,ik->ai', aniso_matrix, g_pool, g_pool)
+    T_factor = np.exp(- 0.5 * gUg )
+    
     for i in range(n_atoms):
         # get the scattering factor
         if scatter_factor_method == 0:
@@ -1112,16 +1118,15 @@ def Fg_matrix(n_hkl, scatter_factor_method, n_atoms, atom_coordinate,
         #                              (g_magnitude**2)/(16*np.pi**2)))
         
         # Anisotropic structure factor
-        gUg = np.einsum('ajk,ij,ik->ai', aniso_matrix, g_pool, g_pool)
-        T_factor = np.exp(- 2 * gUg * np.pi**2)
-        
-        Fg_matrix += ((f_g + f_g_prime) *
+       
+        Fg_matrix = Fg_matrix+((f_g + f_g_prime) *
                   phase[:, :, i] *
                   occupancy[i] *
                   T_factor[i, :][:, np.newaxis])
         
+    
         
-        
+    
         
         
 
