@@ -1110,8 +1110,8 @@ def Fg_matrix(n_hkl, scatter_factor_method, n_atoms, atom_coordinate,
             f_g_prime = 1j * f_thomas(g_magnitude, B_iso[i],
                                       atomic_number[i], electron_velocity)
     
-        # The Structure Factor Equation
-        # multiply by Debye-Waller factor, phase and occupancy
+        #The Structure Factor Equation
+        #multiply by Debye-Waller factor, phase and occupancy
         #Fg_matrix = Fg_matrix+((f_g + f_g_prime) * phase[:, :, i] *
         #                       occupancy[i] *
         #                       np.exp(-B_iso[i] *

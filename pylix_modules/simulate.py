@@ -229,7 +229,7 @@ def simulate(v):
                                         atomic_number, occupancy,
                                         B_iso, g_matrix, g_magnitude,
                                         v.absorption_method, v.absorption_per,
-                                        electron_velocity, g_pool, v.aniso_matrix_m)
+                                        electron_velocity, g_pool, unique_aniso_matrixes)
     # matrix of dot products with the surface normal
     g_dot_norm = np.dot(g_pool, norm_dir_m)
     if v.iter_count == 0:
