@@ -28,6 +28,7 @@ class Inp:
         self.debug = None
         self.plot = None
         self.n_output_reflexions = None
+        self.iso_mode =None 
 
 # class sample:
 #     def __init__(self):

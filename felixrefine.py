@@ -138,6 +138,7 @@ v.aniso_matrix = np.zeros((n_basis, 3, 3))
 v.basis_U_iso = np.array([tup[0] for tup in
                           v.atom_site_u_iso_or_equiv])
 
+
 v.aniso_matrix[2] = np.diag([v.basis_U_iso[0],v.basis_U_iso[0],v.basis_U_iso[0]])
 
 # Anisotropic Debye-Waller factor
@@ -162,7 +163,7 @@ if v.atom_site_aniso_u_11 is not None:
                              np.array([v.aniso_U12[i], v.aniso_U22[i], v.aniso_U23[i]]),
                              np.array([v.aniso_U13[i], v.aniso_U23[i], v.aniso_U33[i]])))
 
-print(v.aniso_matrix)
+#print(v.aniso_matrix)
 
 
 
@@ -202,7 +203,7 @@ v.g_limit = v.g_limit * 2 * np.pi
 
 
 
-atom_position, atom_label, atom_name, B_iso, occupancy, unique_aniso_matrixes = \
+atom_position, atom_label, atom_name, B_iso, occupancy, v.unique_aniso_matrixes = \
     px.unique_atom_positions(
         v.symmetry_matrix, v.symmetry_vector, v.basis_atom_label,
         v.basis_atom_name,
@@ -217,7 +218,7 @@ a_vec_m, b_vec_m, c_vec_m, ar_vec_m, br_vec_m, cr_vec_m, norm_dir_m, t_mat_o2m, 
 t_mat_c2m = t_mat_o2m @ t_mat_c2o
  
 v.aniso_matrix_m = np.array([t_mat_c2m @ U @ t_mat_c2m.T
-                          for U in unique_aniso_matrixes])
+                          for U in v.unique_aniso_matrixes])
 
 # output
 print(f"Zone axis: {v.incident_beam_direction.astype(int)}")
@@ -341,7 +342,7 @@ if 'S' not in v.refine_mode:
 
     if 'E' in v.refine_mode:  # Anisotropic DW
         for i in range(len(v.atomic_sites)):
-            U = v.aniso_matrix_m[i]
+            U = v.unique_aniso_matrixes[i]
             # Extract symmetric independent components
             aniso_params = [U[0, 0], U[1, 1], U[2, 2], U[0, 1], U[0, 2], U[1, 2]]
             for u in aniso_params:

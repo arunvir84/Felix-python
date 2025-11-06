@@ -53,7 +53,7 @@ def simulate(v):
     # fill the unit cell and get mean inner potential
     # when iterating we only do it if necessary?
     # if v.iter_count == 0 or v.current_variable_type < 6:
-    atom_position, atom_label, atom_name, B_iso, occupancy, unique_aniso_matrixes = \
+    atom_position, atom_label, atom_name, B_iso, occupancy, v.unique_aniso_matrixes = \
         px.unique_atom_positions(
             v.symmetry_matrix, v.symmetry_vector, v.basis_atom_label,
             v.basis_atom_name,
@@ -62,8 +62,8 @@ def simulate(v):
     # Generate atomic numbers based on the elemental symbols
     atomic_number = np.array([fu.atomic_number_map[na] for na in atom_name])
     
-    print(unique_aniso_matrixes)
-    print(unique_aniso_matrixes.shape)
+    #print(v.unique_aniso_matrixes)
+    #print(v.unique_aniso_matrixes.shape)
 
     n_atoms = len(atom_label)
     if v.iter_count == 0:
@@ -119,9 +119,9 @@ def simulate(v):
     t_mat_c2m = t_mat_o2m @ t_mat_c2o
     
     v.aniso_matrix_m = np.array([t_mat_c2m @ U @ t_mat_c2m.T
-                             for U in unique_aniso_matrixes])
+                             for U in v.unique_aniso_matrixes])
     
-    print(v.aniso_matrix_m)
+    
 
     # plot unit cell and save .xyz file
     if v.iter_count == 0 and v.plot:
@@ -229,7 +229,7 @@ def simulate(v):
                                         atomic_number, occupancy,
                                         B_iso, g_matrix, g_magnitude,
                                         v.absorption_method, v.absorption_per,
-                                        electron_velocity, g_pool, unique_aniso_matrixes)
+                                        electron_velocity, g_pool, v.unique_aniso_matrixes,v.iso_mode)
     # matrix of dot products with the surface normal
     g_dot_norm = np.dot(g_pool, norm_dir_m)
     if v.iter_count == 0:
@@ -475,9 +475,9 @@ def update_variables(v):
 
         elif variable_type == 5:
             # Aniso Debye-Waller factor (implemented)
-            if 0 < v.refined_variable[i] < 0.1:
+            if 0 < v.refined_variable[i] < 4:
                 var_index = i % 6
-                U = v.aniso_matrix_m[v.atom_refine_flag[i]]
+                U = v.unique_aniso_matrixes[v.atom_refine_flag[i]]
                 if var_index == 0:   U[0, 0] = v.refined_variable[i]*1.0
                 elif var_index == 1: U[1, 1] = v.refined_variable[i]*1.0
                 elif var_index == 2: U[2, 2] = v.refined_variable[i]*1.0
@@ -485,10 +485,10 @@ def update_variables(v):
                 elif var_index == 4: U[0, 2] = U[2, 0] = v.refined_variable[i]*1.0
                 elif var_index == 5: U[1, 2] = U[2, 1] = v.refined_variable[i]*1.0
                 
-                v.aniso_matrix_m[v.atom_refine_flag[i]] = U
+                v.unique_aniso_matrixes[v.atom_refine_flag[i]] = U
                 
             else:
-                v.aniso_matrix_m[v.atom_refine_flag[i]][:] = 0.0
+                v.unique_aniso_matrixes[v.atom_refine_flag[i]][:] = 0.0
                 
 
         elif variable_type == 6:
