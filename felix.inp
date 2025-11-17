@@ -9,7 +9,7 @@ scatter_factor_method     = 0
 holz_flag                 = 0
 absorption_method         = 2
 byte_size                 = 2
-iso_mode                  = 0    # 0 is isotropic and 1 is anisotropic
+iso_mode                  = 1    # 0 is isotropic and 1 is anisotropic
 
 # Radius of the beam in pixels
 image_radius              = 42
@@ -39,7 +39,7 @@ delta_thickness           = 25.0
 precision                 = 0.00002
 
 # Refinement specific flags
-refine_mode               = 'E'  
+refine_mode               = 'S'  
 weighting_flag            = 0
 refine_method             = 3
 correlation_type          = 2
