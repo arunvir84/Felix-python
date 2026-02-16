@@ -30,6 +30,7 @@ class Inp:
         self.debug = None
         self.plot = None
         self.n_output_reflexions = None
+        #self.best_t = None
 
 # class sample:
 #     def __init__(self):

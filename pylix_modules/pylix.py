@@ -334,19 +334,30 @@ def unique_atom_positions(symmetry_matrix, symmetry_vector, basis_atom_label,bas
         np.einsum('ijk,lk->ilj', symmetry_matrix, basis_atom_position) +\
         symmetry_vector[:, np.newaxis, :]
     all_atom_position = symmetry_applied.reshape(total_atoms, 3)
+    
+    # Anisotropic Displacement Parameters, ADPs
+    # apply symops to u_ij's, size [n_symmetry_operations, n_basis_atoms, 3, 3]
+    tmp = np.matmul(symmetry_matrix[:, None], basis_aniso_matrix[None, :])
+    # array of inverse operations, size [n_symmetry_operations, 3, 3]
+    # NB we can't use the transpose as symops are not always orthonormal
+    Minv = np.linalg.inv(symmetry_matrix)
+    # finsh the calculation, size [n_symmetry_operations, n_basis_atoms, 3, 3]
+    all_u_ij = np.matmul(tmp, Minv[:, None])
+    # reshape, size [n_symmetry_operations*n_basis_atoms, 3, 3]
+    all_u_ij = all_u_ij.reshape(-1, 3, 3)
 
     # Normalize positions to be within [0, 1]
     all_atom_position %= 1.0
     # make small values precisely zero
     all_atom_position[np.abs(all_atom_position) < tol] = 0.0
     
-    all_aniso_matrix = np.zeros((total_atoms, 3, 3))
+    #all_aniso_matrix = np.zeros((total_atoms, 3, 3))
     
-    for s, R in enumerate(symmetry_matrix):
-        for a in range(n_basis_atoms):
-            idx = s * n_basis_atoms + a
-            U = basis_aniso_matrix[a]
-            all_aniso_matrix[idx] = R @ U @ R.T
+    #for s, R in enumerate(symmetry_matrix):
+    #    for a in range(n_basis_atoms):
+    #        idx = s * n_basis_atoms + a
+    #        U = basis_aniso_matrix[a]
+    #        all_aniso_matrix[idx] = R @ U @ R.T
          
     #all_aniso_matrix = np.einsum('sij,ajk,skl->s a i l', symmetry_matrix, basis_aniso_matrix, symmetry_matrix)
     #all_aniso_matrix = all_aniso_matrix.reshape(n_symmetry_operations * n_basis_atoms, 3, 3)
@@ -371,11 +382,12 @@ def unique_atom_positions(symmetry_matrix, symmetry_vector, basis_atom_label,bas
     B_iso = all_B_iso[i]
     Kappa = all_Kappa[i]
     Pv = all_Pv[i]
+    aniso_matrix = all_u_ij[i]
     
-    if all_aniso_matrix is not None:
-        aniso_matrix = all_aniso_matrix[i]
-    else:
-        aniso_matrix = None
+    #if all_aniso_matrix is not None:
+    #    aniso_matrix = all_aniso_matrix[i]
+    #else:
+    #    aniso_matrix = None
     
     
 

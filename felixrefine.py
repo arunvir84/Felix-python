@@ -143,36 +143,72 @@ elif "atom_site_u_iso_or_equiv" in cif_dict:
    
 v.aniso_matrix = np.zeros((n_basis, 3, 3)) 
 
-v.basis_U_iso = np.array([tup[0] for tup in
-                          v.atom_site_u_iso_or_equiv])
+# -------------------------------
+# Read isotropic U (may exist even if aniso exists)
+# -------------------------------
+if v.atom_site_u_iso_or_equiv is not None:
+    v.basis_U_iso = np.array([tup[0] for tup in v.atom_site_u_iso_or_equiv])
+else:
+    v.basis_U_iso = None
 
-v.aniso_matrix[2] = np.diag([v.basis_U_iso[0],v.basis_U_iso[0],v.basis_U_iso[0]])
 
-# Anisotropic Debye-Waller factor
-if v.atom_site_aniso_u_11 is not None:
+# -------------------------------
+# Case 1: NO anisotropic ADPs at all
+# -------------------------------
+if v.atom_site_aniso_u_11 is None:
+
+    if v.basis_U_iso is None:
+        raise ValueError("No isotropic or anisotropic displacement parameters found")
+
+    for i in range(n_basis):
+        Uiso = v.basis_U_iso[i]
+        v.aniso_matrix[i] = np.diag([Uiso, Uiso, Uiso])
+
+
+# -------------------------------
+# Case 2: Some or all atoms have anisotropic ADPs
+# -------------------------------
+else:
+    # Read anisotropic arrays
     v.aniso_U11 = np.array([tup[0] for tup in v.atom_site_aniso_u_11])
-
     v.aniso_U22 = np.array([tup[0] for tup in v.atom_site_aniso_u_22])
-
     v.aniso_U33 = np.array([tup[0] for tup in v.atom_site_aniso_u_33])
-
     v.aniso_U12 = np.array([tup[0] for tup in v.atom_site_aniso_u_12])
-
     v.aniso_U13 = np.array([tup[0] for tup in v.atom_site_aniso_u_13])
-
     v.aniso_U23 = np.array([tup[0] for tup in v.atom_site_aniso_u_23])
 
-    
-    
-    for i in range(len(v.aniso_U11)):
-        v.aniso_matrix[i] = \
-            np.column_stack((np.array([v.aniso_U11[i], v.aniso_U12[i], v.aniso_U13[i]]),
-                             np.array([v.aniso_U12[i], v.aniso_U22[i], v.aniso_U23[i]]),
-                             np.array([v.aniso_U13[i], v.aniso_U23[i], v.aniso_U33[i]])))
+    # -------------------------------
+    # Build lookup: atom label → U tensor
+    # -------------------------------
+    aniso_dict = {}
+
+    for j, label in enumerate(v.atom_site_aniso_label):
+        aniso_dict[label] = np.array([
+            [v.aniso_U11[j], v.aniso_U12[j], v.aniso_U13[j]],
+            [v.aniso_U12[j], v.aniso_U22[j], v.aniso_U23[j]],
+            [v.aniso_U13[j], v.aniso_U23[j], v.aniso_U33[j]],
+        ])
+
+    # -------------------------------
+    # Fill full basis list
+    # -------------------------------
+    for i in range(n_basis):
+        label = v.atom_site_label[i]
+
+        if label in aniso_dict:
+            v.aniso_matrix[i] = aniso_dict[label]
+        else:
+            if v.basis_U_iso is None:
+                raise ValueError(
+                    f"Atom {label} has no anisotropic or isotropic ADP"
+                )
+
+            Uiso = v.basis_U_iso[i]
+            v.aniso_matrix[i] = np.diag([Uiso, Uiso, Uiso])
 
 
 
-
+print(v.aniso_matrix)
 
 
 
@@ -676,11 +712,14 @@ if 'S' not in v.refine_mode:
     
     print(f"Refinement complete after {v.iter_count} simulations.  Refined values: {v.best_var}")
 
+
 # %% final print
 sim.print_LACBED(v)
+sim.save_LACBED(v)
 total_time = time.time() - start
 print("-----------------------------------------------------------------")
 # print(f"Beam pool calculation took {setup:.3f} seconds")
+
 # print(f"Bloch wave calculation in {bwc:.1f} s ({1000*(bwc)/(4*v.image_radius**2):.2f} ms/pixel)")
 print(f"Total time {total_time:.1f} s")
 print("-----------------------------------------------------------------")
