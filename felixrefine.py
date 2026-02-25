@@ -278,8 +278,16 @@ else:
     raise ValueError("Invalid absorption method (0,1,2) chosen in felix.inp")
 
 # initialise pv and kappa
-v.basis_pv = np.zeros(n_basis, dtype=float)
-v.basis_kappa = np.ones(n_basis, dtype=float)*0.1
+#v.basis_pv = np.zeros(n_basis, dtype=float)
+#v.basis_kappa = np.ones(n_basis, dtype=float)*0.1
+
+v.basis_pv = np.zeros_like(v.atom_site_label,dtype=float)
+v.basis_kappa = np.zeros_like(v.atom_site_label,dtype=float)
+atomic_number = np.array([fu.atomic_number_map[na] for na in v.basis_atom_name])
+print(type(v.basis_kappa))
+for i in range(len(atomic_number)):
+    v.basis_pv[i]= fu.elements_info[atomic_number[i]]["pv"]
+    v.basis_kappa[i] = 1.1  #set all kappa values to 1 initially 
 
 
 if 'S' in v.refine_mode:
