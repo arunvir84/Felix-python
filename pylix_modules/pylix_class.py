@@ -30,7 +30,6 @@ class Inp:
         self.debug = None
         self.plot = None
         self.n_output_reflexions = None
-        #self.best_t = None
 
 # class sample:
 #     def __init__(self):
@@ -91,11 +90,10 @@ class Cif:
         self.atom_site_aniso_u_12 = None
         self.atom_site_aniso_u_13 = None
         self.atom_site_aniso_u_23 = None
-        self.U_matrix_Aniso = None
-        self.Basis_Kappa = None
-        self.Basis_Pv = None
-        
-        
+        self.atom_site_aniso_label = None
+        self.atom_site_aniso_type_symbol = None
+        self.atom_type_symbol = None
+        self.atom_type_oxidation_number = None
 
 # class cell:
 #     def __init__(self):

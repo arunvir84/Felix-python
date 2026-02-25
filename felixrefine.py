@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Started August 2024
+Started August 2024, converted from MPI Fortran version
 
 @author: R.Beanland@warwick.ac.uk
 
@@ -24,6 +24,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patheffects import withStroke
+from scipy.ndimage import shift
 import time
 
 # felix modules
@@ -45,6 +46,8 @@ print("-----------------------------------------------------------------")
 v = pc.Var()  # working variables used in the simulation
 # initialise iteration count
 v.iter_count = 0
+# a small number
+eps = 1e-10
 
 
 # %% read felix.cif
@@ -52,7 +55,7 @@ v.iter_count = 0
 # cif_dict is a dictionary of value-key pairs.  values are given as tuples
 # with the second number the uncertainty in the first.  Nothing is currently
 # done with these uncertainties...
-cif_dict = px.read_cif('AnIso.cif')
+cif_dict = px.read_cif('felix.cif')
 v.update_from_dict(cif_dict)
 # ====== extract cif data into working variables v
 v.space_group = v.symmetry_space_group_name_h_m
@@ -62,7 +65,7 @@ elif v.chemical_formula_sum is not None:
     v.chemical_formula = v.chemical_formula_sum
 elif v.chemical_formula_iupac is not None:
     v.chemical_formula = v.chemical_formula_iupac
-print("Material: " + v.chemical_formula)
+print(f"Material: {v.chemical_formula}")
 
 # space group number and lattice type
 if "space_group_symbol" in cif_dict:
@@ -90,12 +93,6 @@ v.cell_beta = v.cell_angle_beta[0]*np.pi/180.0
 v.cell_gamma = v.cell_angle_gamma[0]*np.pi/180.0
 n_basis = len(v.atom_site_label)
 
-#oxidation state and type label 
-
-
-
-
-
 # symmetry operations
 if "space_group_symop_operation_xyz" in cif_dict:
     v.symmetry_matrix, v.symmetry_vector = px.symop_convert(
@@ -114,7 +111,6 @@ v.basis_atom_label = [s.rstrip() for s in v.atom_site_label]
 v.basis_atom_name = [''.join(filter(str.isalpha, name))
                      for name in v.atom_site_type_symbol]
 
-
 # take care of any odd symbols, get the case right
 for i in range(n_basis):
     name = v.basis_atom_name[i]
@@ -131,86 +127,10 @@ v.basis_atom_position = \
     np.column_stack((np.array([tup[0] for tup in v.atom_site_fract_x]),
                      np.array([tup[0] for tup in v.atom_site_fract_y]),
                      np.array([tup[0] for tup in v.atom_site_fract_z])))
-
-
-
-# Debye-Waller factor
-if "atom_site_b_iso_or_equiv" in cif_dict:
-    v.basis_B_iso = np.array([tup[0] for tup in v.atom_site_b_iso_or_equiv])
-elif "atom_site_u_iso_or_equiv" in cif_dict:
-    v.basis_B_iso = np.array([tup[0] for tup in
-                              v.atom_site_u_iso_or_equiv]) * 8 * np.pi**2
-   
-v.aniso_matrix = np.zeros((n_basis, 3, 3)) 
-
-# -------------------------------
-# Read isotropic U (may exist even if aniso exists)
-# -------------------------------
-if v.atom_site_u_iso_or_equiv is not None:
-    v.basis_U_iso = np.array([tup[0] for tup in v.atom_site_u_iso_or_equiv])
-else:
-    v.basis_U_iso = None
-
-
-# -------------------------------
-# Case 1: NO anisotropic ADPs at all
-# -------------------------------
-if v.atom_site_aniso_u_11 is None:
-
-    if v.basis_U_iso is None:
-        raise ValueError("No isotropic or anisotropic displacement parameters found")
-
-    for i in range(n_basis):
-        Uiso = v.basis_U_iso[i]
-        v.aniso_matrix[i] = np.diag([Uiso, Uiso, Uiso])
-
-
-# -------------------------------
-# Case 2: Some or all atoms have anisotropic ADPs
-# -------------------------------
-else:
-    # Read anisotropic arrays
-    v.aniso_U11 = np.array([tup[0] for tup in v.atom_site_aniso_u_11])
-    v.aniso_U22 = np.array([tup[0] for tup in v.atom_site_aniso_u_22])
-    v.aniso_U33 = np.array([tup[0] for tup in v.atom_site_aniso_u_33])
-    v.aniso_U12 = np.array([tup[0] for tup in v.atom_site_aniso_u_12])
-    v.aniso_U13 = np.array([tup[0] for tup in v.atom_site_aniso_u_13])
-    v.aniso_U23 = np.array([tup[0] for tup in v.atom_site_aniso_u_23])
-
-    # -------------------------------
-    # Build lookup: atom label → U tensor
-    # -------------------------------
-    aniso_dict = {}
-
-    for j, label in enumerate(v.atom_site_aniso_label):
-        aniso_dict[label] = np.array([
-            [v.aniso_U11[j], v.aniso_U12[j], v.aniso_U13[j]],
-            [v.aniso_U12[j], v.aniso_U22[j], v.aniso_U23[j]],
-            [v.aniso_U13[j], v.aniso_U23[j], v.aniso_U33[j]],
-        ])
-
-    # -------------------------------
-    # Fill full basis list
-    # -------------------------------
-    for i in range(n_basis):
-        label = v.atom_site_label[i]
-
-        if label in aniso_dict:
-            v.aniso_matrix[i] = aniso_dict[label]
-        else:
-            if v.basis_U_iso is None:
-                raise ValueError(
-                    f"Atom {label} has no anisotropic or isotropic ADP"
-                )
-
-            Uiso = v.basis_U_iso[i]
-            v.aniso_matrix[i] = np.diag([Uiso, Uiso, Uiso])
-
-
-
-print(v.aniso_matrix)
-
-
+# redefine the basis to allow coordinate refinement and check for occupancy
+v.basis_atom_position = px.preferred_basis(v.space_group_number,
+                                           v.basis_atom_position,
+                                           v.basis_wyckoff)
 
 # occupancy, assume it's unity if not specified
 if v.atom_site_occupancy is not None:
@@ -218,12 +138,96 @@ if v.atom_site_occupancy is not None:
 else:
     v.basis_occupancy = np.ones([n_basis])
 
+# check for multiple occupancy on the same site
+tol = 0.000001  # tolerance for saying atoms are the same
+diff = v.basis_atom_position[:, None, :] - v.basis_atom_position[None, :, :]
+dist2 = np.sum(diff**2, axis=2)
+close = (dist2 <= tol**2) & (~np.eye(n_basis, dtype=bool))
+# basis_mult_occ has 0 if no shared occupancy, increasing numbers otherwise
+v.basis_mult_occ = np.zeros(n_basis, dtype=int)
+visited = np.zeros(n_basis, dtype=bool)
+group_id = 0
+for i in range(n_basis):
+    if visited[i]:
+        continue
+    stack = [i]  # Find all atoms at position i
+    cluster = []
+    while stack:
+        j = stack.pop()
+        if visited[j]:
+            continue
+        visited[j] = True
+        cluster.append(j)
+        neighbors = np.where(close[j])[0]
+        stack.extend(neighbors)
+    if len(cluster) > 1:
+        group_id += 1
+        v.basis_mult_occ[cluster] = group_id
+
+# Thermal displacement parameters, we work with u_ij
+if "atom_site_b_iso_or_equiv" in cif_dict:
+    v.basis_B_iso = np.array([tup[0] for tup in v.atom_site_b_iso_or_equiv])
+    v.basis_u_iso = v.basis_B_iso/(8 * np.pi**2)
+elif "atom_site_u_iso_or_equiv" in cif_dict:
+    v.basis_u_iso = np.array([tup[0] for tup in
+                              v.atom_site_u_iso_or_equiv])
+    v.basis_B_iso = v.basis_u_iso * 8 * np.pi**2  # *** TO BE DELETED ***
+
+# ADP tensor Uij with isotropic components on the diagonal
+v.basis_u_ij = np.zeros((n_basis, 3, 3))
+idx = np.arange(3)
+v.basis_u_ij[:, idx, idx] = v.basis_u_iso[:, None]
+
+# check for anisotropic displacement parameters
+# and if they exist match them with the correct basis atom
+if "atom_site_aniso_label" in cif_dict:
+    # remove any trailing blanks
+    v.atom_site_aniso_label = [s.rstrip() for s in v.atom_site_aniso_label]
+    # link to the basis labels
+    for i in range(n_basis):
+        for j in range(len(v.atom_site_aniso_label)):
+            if v.atom_site_aniso_label[j] == v.basis_atom_label[i]:
+                print(f"  Using anisotropic atomic displacement parameters for atom {i}")
+                # the data is in 2-tuples (second value is the error)
+                v.basis_u_ij[i, 0, 0] = v.atom_site_aniso_u_11[j][0]
+                v.basis_u_ij[i, 1, 1] = v.atom_site_aniso_u_22[j][0]
+                v.basis_u_ij[i, 2, 2] = v.atom_site_aniso_u_33[j][0]
+                v.basis_u_ij[i, 0, 1] = v.atom_site_aniso_u_12[j][0]
+                v.basis_u_ij[i, 1, 0] = v.atom_site_aniso_u_12[j][0]
+                v.basis_u_ij[i, 0, 2] = v.atom_site_aniso_u_13[j][0]
+                v.basis_u_ij[i, 2, 0] = v.atom_site_aniso_u_13[j][0]
+                v.basis_u_ij[i, 1, 2] = v.atom_site_aniso_u_23[j][0]
+                v.basis_u_ij[i, 2, 1] = v.atom_site_aniso_u_23[j][0]
+
+# np.set_printoptions(precision=5, suppress=True)
+# print(f"Anisotropic ADPs: {v.basis_u_ij}")
+
+# oxidation state
+if "atom_type_symbol" in cif_dict:
+    # remove any trailing blanks
+    v.atom_type_symbol = [s.rstrip() for s in v.atom_type_symbol]
+    v.basis_oxno = np.zeros(n_basis, dtype=int)
+    # is there an oxidation number given in the cif
+    if v.atom_type_oxidation_number is not None:
+        # link to the basis labels
+        for i in range(n_basis):
+            for j in range(len(v.atom_type_symbol)):
+                if v.atom_type_symbol[j] == v.atom_site_type_symbol[i]:
+                    v.basis_oxno[i] = v.atom_type_oxidation_number[j][0]
+    # is there a case where oxidation state is just extracted from the end
+    # of atom_type_symbol?  If so, it should go here
+
 v.basis_atom_delta = np.zeros([n_basis, 3])  # ***********what's this
 
 
 # %% read felix.inp
 inp_dict = px.read_inp_file('felix.inp')
 v.update_from_dict(inp_dict)
+
+if v.debug:
+    np.set_printoptions(precision=5, suppress=True)
+    for i in range(n_basis):
+        print(f"{v.basis_atom_label[i]}:  u_ij =\n {v.basis_u_ij[i, :, :]}")
 
 # thickness array
 if (v.final_thickness > v.initial_thickness + v.delta_thickness):
@@ -244,70 +248,39 @@ v.atomic_sites = np.array(v.atomic_sites, dtype='int')
 # crystallography exp(2*pi*i*g.r) to physics convention exp(i*g.r)
 v.g_limit = v.g_limit * 2 * np.pi
 
-
-
-
-
- 
-
-#for i, atom in enumerate(atom_name):
-    #if 'O' in atom:   # matches 'O1', 'O2-', etc.
-       # pv_initial[i] = 0.8
-
-#some initial reasonable pvs for testing
-#print(v.basis_atom_name)
-
-
-v.Basis_Pv = np.zeros_like(v.atom_site_label,dtype=float)
-v.Basis_Kappa = np.zeros_like(v.atom_site_label,dtype=float)
-atomic_number = np.array([fu.atomic_number_map[na] for na in v.basis_atom_name])
-print(type(v.Basis_Kappa))
-for i in range(len(atomic_number)):
-    v.Basis_Pv[i]= fu.elements_info[atomic_number[i]]["pv"]
-    v.Basis_Kappa[i] = 1.0  #set all kappa values to 1 initially 
-
-#setting up initial pv values 
-print(v.Basis_Kappa)
-
-# kappas (default 1.0)
-
-
-#refined kappa : [1.21517673 1.12267508 0.93547286]
-# expand per atom in full unit cell
- 
-
-
- #print(unique_aniso_matrixes)
- #print(unique_aniso_matrixes.shape)
- 
- # Step 1: define a dictionary of initial P_v guesses per element
- # For LiNbO3 using formal charges as we discussed
- # we just need a dictionary of the valence states of the atoms 
-
-
- 
-
 # output
 print(f"Zone axis: {v.incident_beam_direction.astype(int)}")
 if v.n_thickness == 1:
     print(f"Specimen thickness {v.initial_thickness/10} nm")
 else:
     print(f"{v.n_thickness} thicknesses: {', '.join(map(str, v.thickness/10))} nm")
-    
-    
 
 if v.scatter_factor_method == 0:
-    print("Using Kirkland scattering factors")
+    print("  Using Kirkland scattering factors")
 elif v.scatter_factor_method == 1:
-    print("Using Lobato scattering factors")
+    print("  Using Lobato scattering factors")
 elif v.scatter_factor_method == 2:
-    print("Using Peng scattering factors")
+    print("  Using Peng scattering factors")
 elif v.scatter_factor_method == 3:
-    print("Using Doyle & Turner scattering factors")
+    print("  Using Doyle & Turner scattering factors")
 elif v.scatter_factor_method == 4:
-    print("using orbital HF scattering factors with Kappa formalism")
+    print("  Using orbital Hartree-Fock scattering factors with Kappa")
 else:
     raise ValueError("No scattering factors chosen in felix.inp")
+
+if v.absorption_method == 0:
+    print("  No absorption")
+elif v.absorption_method == 1:
+    print(f"  Proportional absorption model, set at {v.absorption_per}%")
+elif v.absorption_method == 2:
+    print("  Bird and King absorption model, with Thomas parameterisation")
+else:
+    raise ValueError("Invalid absorption method (0,1,2) chosen in felix.inp")
+
+# initialise pv and kappa
+v.basis_pv = np.zeros(n_basis, dtype=float)
+v.basis_kappa = np.ones(n_basis, dtype=float)*0.1
+
 
 if 'S' in v.refine_mode:
     print("Simulation only, S")
@@ -316,36 +289,72 @@ elif 'A' in v.refine_mode:
     # needs error check for any other refinement
     # raise ValueError("Structure factor refinement
     # incompatible with anything else")
-else:
-    if 'B' in v.refine_mode:
-        print("Refining Atomic Coordinates, B")
-        # redefine the basis if necessary to allow coordinate refinement
-        v.basis_atom_position = px.preferred_basis(v.space_group_number,
-                                                   v.basis_atom_position,
-                                                   v.basis_wyckoff)
-    if 'C' in v.refine_mode:
-        print("Refining Occupancies, C")
-    if 'D' in v.refine_mode:
-        print("Refining Isotropic Debye Waller Factors, D")
-    if 'E' in v.refine_mode:
-        print("Refining Anisotropic Debye Waller Factors, E")
-        #raise ValueError("Refinement mode E not implemented")
+else:  # atom-specific refinements can be done simultaneously
+    atm = 0  # flag for atom-specific refinements
     if (len(v.atomic_sites) > n_basis):
         raise ValueError("Number of atomic sites to refine is larger than the \
                          number of atoms")
-if 'F' in v.refine_mode:
-    print("Refining Lattice Parameters, F")
-if 'G' in v.refine_mode:
-    print("Refining Lattice Angles, G")
-if 'H' in v.refine_mode:
-    print("Refining Convergence Angle, H")
-if 'I' in v.refine_mode:
-    print("Refining Accelerating Voltage, I")
-if 'J' in v.refine_mode:
-    print("Refining Kappa values, J")
-if 'K' in v.refine_mode:
-    print("Refining Pv vales, K")
-    
+    if 'B' in v.refine_mode:
+        atm = 1
+        print("Refining Atomic Coordinates, B")
+    if 'C' in v.refine_mode:
+        atm = 1
+        print("Refining Occupancies, C")
+    if 'D' in v.refine_mode:
+        atm = 1
+        print("Refining Isotropic atomic displacement parameters, D")
+    if 'E' in v.refine_mode:
+        atm = 1
+        print("Refining Anisotropic atomic displacement parameters, E")
+    if 'J' in v.refine_mode:
+        atm = 1
+        print("Refining Kappa, J")
+    if 'K' in v.refine_mode:
+        atm = 1
+        atomic_number = np.array([fu.atomic_number_map[na]
+                                  for na in v.basis_atom_name])
+        for i in range(n_basis):
+            v.basis_pv[i] = fu.elements_info[atomic_number[i]]["pv"]
+        # v.basis_pv[0]= 0.9994
+        # v.basis_pv[1] = 4.997
+        # v.basis_pv[2]= 5.985
+        # v.basis_kappa[0]= 1.3
+        # v.basis_kappa[1]= 1.01
+        # v.basis_kappa[2]= 1.01
+        # kappas (default 1.0)
+        # refined kappa : [1.21517673 1.12267508 0.93547286]
+        # expand per atom in full unit cell
+        # print(unique_aniso_matrixes)
+        # print(unique_aniso_matrixes.shape)
+        # print(v.basis_kappa)
+        # Step 1: define a dictionary of initial P_v guesses per element
+        # For LiNbO3 using formal charges as we discussed
+        # we just need a dictionary of the valence states of the atoms
+        print("Refining valence electrons, K")
+    if atm == 1:
+        # needs error check here is specified sites make no sense
+        for i in range(len(v.atomic_sites)):
+            if v.atomic_sites[i] >= len(v.basis_atom_name):
+                raise ValueError(f"atomic_site {v.atomic_sites[i]} selected for refinement but does not exist")
+            print(f"  Refining basis atom {v.atomic_sites[i]}, {v.basis_atom_name[v.atomic_sites[i]]}")
+
+    # non atom-specific refinements
+    if 'F' in v.refine_mode:
+        print("Refining Lattice Parameters, F")
+    if 'G' in v.refine_mode:
+        print("Refining Lattice Angles, G")
+    if 'H' in v.refine_mode:
+        print("Refining Convergence Angle, H")
+    if 'I' in v.refine_mode:
+        print("Refining Accelerating Voltage, I")
+
+    if v.correlation_type == 0:
+        print("  Using Pearson correlation")
+    elif v.correlation_type == 1:
+        print("  Using phase correlation")
+    elif v.correlation_type == 2:
+        print("  Using Pearson correlation, applying sub-pixel alignment")
+
 
 # %% read felix.hkl
 v.input_hkls, v.i_obs, v.sigma_obs = px.read_hkl_file("felix.hkl")
@@ -358,18 +367,20 @@ v.n_out = len(v.input_hkls)+1  # we expect 000 NOT to be in the hkl list
 # --------------------------------------------------------------------
 # Ug refinement is a special case, cannot do any other refinement alongside
 # We count the independent variables:
-# v.refined_variable = variable to be refined
+# v.refined_variable = array of variables to be refined
 # v.refined_variable_type = what kind of variable, as follows
-# 0 = Ug amplitude
-# 1 = Ug phase
-# 2 = atom coordinate *** PARTIALLY IMPLEMENTED *** not all space groups
-# 3 = occupancy
-# 4 = B_iso
-# 5 = B_aniso *** NOT YET IMPLEMENTED ***
-# 61,62,63 = lattice parameters *** PARTIALLY IMPLEMENTED *** not rhombohedral
-# 7 = unit cell angles *** NOT YET IMPLEMENTED ***
-# 8 = convergence angle
-# 9 = accelerating_voltage_kv *** NOT YET IMPLEMENTED ***
+# 10 A1 = Ug amplitude *** NOT YET IMPLEMENTED ***
+# 11 A2 = Ug phase *** NOT YET IMPLEMENTED ***
+# 20 B = atom coordinate *** PARTIALLY IMPLEMENTED *** not all space groups
+# 21 C = occupancy
+# 22 D = isotropic atomic displacement parameters (ADPs)
+# 23,24,25,26,27,28 E = anisotropic atomic displacement parameters (ADPs)
+# 30,31,32 F = lattice parameters ***PARTIALLY IMPLEMENTED*** not rhombohedral
+# 33,34,35 G = unit cell angles *** NOT YET IMPLEMENTED ***
+# 40 H = convergence angle
+# 41 I = accelerating_voltage_kv *** NOT YET IMPLEMENTED ***
+# 50 J = Kappa
+# 51 K = valence electrons
 v.refined_variable = ([])  # array of floats, values to be refined
 v.refined_variable_type = ([])  # array of integers corresponding to above
 v.atom_refine_flag = ([])  # the index of the atom in the .cif, -1 if none
@@ -397,36 +408,38 @@ if 'S' not in v.refine_mode:
                 r_dot_v = np.dot(v.basis_atom_position[v.atomic_sites[i]],
                                  moves[j, :])
                 v.refined_variable.append(r_dot_v)
-                v.refined_variable_type.append(2)  # flag to say it's a coord
+                v.refined_variable_type.append(20)  # flag to say it's a coord
                 v.atom_refine_flag.append(v.atomic_sites[i])  # atom index
                 v.atom_refine_vec.append(moves[j, :])  # atom movement
 
     if 'C' in v.refine_mode:  # Occupancy
         for i in range(len(v.atomic_sites)):
             v.refined_variable.append(v.basis_occupancy[v.atomic_sites[i]])
-            v.refined_variable_type.append(3)
+            v.refined_variable_type.append(21)
             v.atom_refine_flag.append(v.atomic_sites[i])
             v.atom_refine_vec.append(nullvec)  # no atom movement
 
-    if 'D' in v.refine_mode:  # Isotropic DW
+    if 'D' in v.refine_mode:  # Isotropic ADPs
         for i in range(len(v.atomic_sites)):
             v.refined_variable.append(v.basis_B_iso[v.atomic_sites[i]])
-            v.refined_variable_type.append(4)
+            v.refined_variable_type.append(22)
             v.atom_refine_flag.append(v.atomic_sites[i])
             v.atom_refine_vec.append(nullvec)  # no atom movement
 
-    if 'E' in v.refine_mode:  # Anisotropic DW
+    if 'E' in v.refine_mode:  # Anisotropic ADPs, only refine non-zero
         for i in range(len(v.atomic_sites)):
-            U = v.aniso_matrix[i]
+            U = v.basis_u_ij[v.atomic_sites[i]]
             # Extract symmetric independent components
-            aniso_params = [U[0, 0], U[1, 1], U[2, 2], U[0, 1], U[0, 2], U[1, 2]]
-            for u in aniso_params:
-                v.refined_variable.append(u)
-                v.refined_variable_type.append(5)
-                v.atom_refine_flag.append(v.atomic_sites[i])
-                v.atom_refine_vec.append(nullvec)  # no atom movement
-                
-        
+            aniso_params = np.array([U[0, 0], U[1, 1], U[2, 2],
+                                     U[0, 1], U[0, 2], U[1, 2]])
+            anisotypes = [23, 24, 25, 26, 27, 28]
+            for param, t in zip(aniso_params, anisotypes):
+                if abs(param) > eps:
+                    v.refined_variable.append(param)
+                    v.refined_variable_type.append(t)
+                    v.atom_refine_flag.append(v.atomic_sites[i])
+                    v.atom_refine_vec.append(nullvec)  # no atom movement
+
 
     if 'F' in v.refine_mode:  # Lattice parameters
         # variable_type first digit=6 indicates lattice parameter
@@ -434,67 +447,57 @@ if 'S' not in v.refine_mode:
         # This section needs work to include rhombohedral cells and
         # non-standard settings!!!
         v.refined_variable.append(v.cell_a)  # is in all lattice types
-        v.refined_variable_type.append(61)
+        v.refined_variable_type.append(30)
         v.atom_refine_flag.append(-1)  # -1 indicates not an atom
         v.atom_refine_vec.append(nullvec)  # no atom movement
         if v.space_group_number < 75:  # Triclinic, monoclinic, orthorhombic
             v.refined_variable.append(v.cell_b)
-            v.refined_variable_type.append(62)
+            v.refined_variable_type.append(31)
             v.atom_refine_flag.append(-1)
             v.refined_variable.append(v.cell_c)
-            v.refined_variable_type.append(63)
+            v.refined_variable_type.append(32)
             v.atom_refine_flag.append(-1)
             v.atom_refine_vec.append(nullvec)  # no atom movement
-        elif 142 < v.space_group_number < 168:  # Rhombohedral
+        elif 142 < v.space_group_number < 160:  # Rhombohedral 168
             # Need to work out R- vs H- settings!!!
             raise ValueError("Rhombohedral R- vs H- not yet implemented")
-        elif (167 < v.space_group_number < 195) or \
-             (74 < v.space_group_number < 143):  # Hexagonal or Tetragonal
+        elif (160 < v.space_group_number < 195) or \
+             (74 < v.space_group_number < 143):  # Hexagonal or Tetragonal 167
             v.refined_variable.append(v.cell_c)
-            v.refined_variable_type.append(63)
+            v.refined_variable_type.append(32)
             v.atom_refine_flag.append(-1)
             v.atom_refine_vec.append(nullvec)  # no atom movement
 
     if 'G' in v.refine_mode:  # Unit cell angles
-        # Not yet implemented!!! variable_type 7
+        # Not yet implemented!!! variable_type 33,34,35
         raise ValueError("Unit cell angle refinement not yet implemented")
 
     if 'H' in v.refine_mode:  # Convergence angle
         v.refined_variable.append(v.convergence_angle)
-        v.refined_variable_type.append(8)
+        v.refined_variable_type.append(40)
         v.atom_refine_flag.append(-1)
         v.atom_refine_vec.append(nullvec)  # no atom movement
         print(f"Starting convergence angle {v.convergence_angle} Å^-1")
 
     if 'I' in v.refine_mode:  # accelerating_voltage_kv
         v.refined_variable.append(v.accelerating_voltage_kv)
-        v.refined_variable_type.append(9)
+        v.refined_variable_type.append(41)
         v.atom_refine_flag.append(-1)
         v.atom_refine_vec.append(nullvec)  # no atom movement
-        
-        
-    
-    if  'J' in v.refine_mode:
-        
-        
+
+    if 'J' in v.refine_mode:
         for i in range(len(v.atomic_sites)):
-            
-            v.refined_variable.append(v.Basis_Kappa[v.atomic_sites[i]])
-            v.refined_variable_type.append(10)
+            v.refined_variable.append(v.basis_kappa[v.atomic_sites[i]])
+            v.refined_variable_type.append(50)
             v.atom_refine_flag.append(v.atomic_sites[i])
             v.atom_refine_vec.append(nullvec)  # no atom movement
 
-       
-    if 'K' in v.refine_mode:  
+    if 'K' in v.refine_mode:
         for i in range(len(v.atomic_sites)):
-            
-            v.refined_variable.append(v.Basis_Pv[v.atomic_sites[i]])
-            v.refined_variable_type.append(11)
+            v.refined_variable.append(v.basis_pv[v.atomic_sites[i]])
+            v.refined_variable_type.append(51)
             v.atom_refine_flag.append(v.atomic_sites[i])
             v.atom_refine_vec.append(nullvec)  # no atom movement
-       
-        
-       
 
     # Total number of independent variables
     v.n_variables = len(v.refined_variable)
@@ -576,10 +579,12 @@ print("-------------------------------")
 print("Baseline simulation:")
 # uses the whole v=Var class
 sim.simulate(v)
+# print_LACBED has options 0=sim, 1=expt, 2=difference
+sim.print_LACBED(v, 0)
 
 # %% read in experimental images
 if 'S' not in v.refine_mode:
-    v.lacbed_expt = np.zeros([2*v.image_radius, 2*v.image_radius, v.n_out])
+    v.lacbed_expt_raw = np.zeros([2*v.image_radius, 2*v.image_radius, v.n_out])
     # get the list of available images
     x_str = str(2*v.image_radius)
     dm3_folder = None
@@ -601,47 +606,33 @@ if 'S' not in v.refine_mode:
             for file_name in dm3_files:
                 if g_string in file_name:
                     file_path = os.path.join(dm3_folder, file_name)
-                    v.lacbed_expt[:, :, i] = px.read_dm3(file_path,
-                                                       2*v.image_radius,
-                                                       v.debug)
+                    v.lacbed_expt_raw[:, :, i] = px.read_dm3(file_path,
+                                                             2*v.image_radius,
+                                                             v.debug)
                     found = True
             if not found:
-                n_expt -= 1
+                n_expt -= 1  # *_* we don't actually do anything with this!
                 print(f"{g_string} not found")
 
+        # sub-pixel shift of images for zncc (correlation type = 2)
+        v.lacbed_expt = np.copy(v.lacbed_expt_raw)
+                
         # print experimental LACBED patterns
-        w = int(np.ceil(np.sqrt(v.n_out)))
-        h = int(np.ceil(v.n_out/w))
-        fig, axes = plt.subplots(w, h, figsize=(w*5, h*5))
-        text_effect = withStroke(linewidth=3, foreground='black')
-        axes = axes.flatten()
-        for i in range(v.n_out):
-            axes[i].imshow(v.lacbed_expt[:, :, i], cmap='gist_earth')
-            axes[i].axis('off')
-            annotation = f"{v.hkl[v.g_output[i], 0]}{v.hkl[v.g_output[i], 1]}{v.hkl[v.g_output[i], 2]}"
-            axes[i].annotate(annotation, xy=(5, 5), xycoords='axes pixels',
-                             size=30, color='w', path_effects=[text_effect])
-        for i in range(v.n_out, len(axes)):
-            axes[i].axis('off')
-        plt.tight_layout()
-        plt.show()
+        # print_LACBED has options 0=sim, 1=expt, 2=difference
+        sim.print_LACBED(v, 1)
         # initialise correlation
         best_corr = np.ones(v.n_out)
+    
 
-
-# %% output - *** needs work, apply blur/find best blur 
+# output LACBED patterns and figure of merit
 if v.image_processing == 1:
     print(f"  Blur radius {v.blur_radius} pixels")
-if 'S' in v.refine_mode:
-    #*** apply blur !!!
-    # output simulated LACBED patterns
-    sim.print_LACBED(v)
-else:
+if 'S' not in v.refine_mode:
     # figure of merit
     fom = sim.figure_of_merit(v)
     print(f"  Figure of merit {100*fom:.2f}%")
     print("-------------------------------")
-    sim.print_LACBED(v)
+
 
 # %% start refinement loop *** needs work
 if 'S' not in v.refine_mode:
@@ -649,13 +640,9 @@ if 'S' not in v.refine_mode:
     fit0 = fom*1.0
     v.best_fit = fom*1.0
     last_fit = fom*1.0
-    # p is a vector along the gradient in n-dimensional space
-    # we initially set these as
-    p = np.ones(v.n_variables)
-    # last_p = np.ones(v.n_variables)
     r3_var = np.zeros(3)  # for parabolic minimum
     r3_fom = np.zeros(3)
-    # dunno what this is
+    # *_*dunno what this is
     independent_delta = 0.0
 
     # for a plot
@@ -664,63 +651,83 @@ if 'S' not in v.refine_mode:
     # Refinement loop
     df = 1.0
     while df >= v.exit_criteria:
-        # v.refined_variable is the working set of variables
-        # best_var is the running best fit during this refinement cycle
+        # v.refined_variable is the working array of variables
+        # best_var is the best array of variables during this refinement cycle
         v.best_var = np.copy(v.refined_variable)
         # next_var is the predicted next (best) point
         v.next_var = np.copy(v.refined_variable)
-        # if all variables have been refined and we're still in the loop, reset
-        if np.sum(np.abs(p)) < 1e-10:
-            p = np.ones(v.n_variables)
 
-        # ===========individual variable minimisation
-        # Go through the variables looking at three points in the hope
-        # of capturing a minimum - if there is one, we take it and remove
-        # that variable from multidimensional refinement, p[i] = 0.
-        # Otherwise p[i] is the gradient for that variable.
-        # We also get a predicted best starting point
-        # for gradient descent, v.next_var
-        for i in range(v.n_variables):
-            # Skip variables already optimized
-            if abs(p[i]) < 1e-10:
-                p[i] = 0.0
-                continue
-            p[i] = sim.refine_single_variable(v, i)
+        if v.refine_method == 0:
+            print("Gradient descent, one parameter at a time")
+            # dydx is a vector along the gradient in n-dimensional space
+            dydx = np.zeros(v.n_variables)
+            for i in range(v.n_variables):
+                dydx[i] = 1.0
+                print(f"Refinement vector {dydx}")
+                # single is just multiparameter with one non-zero value
+                # v.next_var = v.best_var - dydx*v.refinement_scale
+                dydx = sim.refine_multi_variable(v, dydx)
 
-        # if all variables have predicted minima, do a final simulation
-        # if it's better, it will update v.best_fit and v.best_var accordingly
-        if np.count_nonzero(p) == 0:
-            print("Closing simulation for this cycle")
-            v.refined_variable = np.copy(v.best_var)
-            fom = sim.sim_fom(v, 0)
-        else:
-            # ===========vector descent
+        elif v.refine_method == 1:
+            print("Multiparameter refinement, finding parameter gradients")
+            # =========== step 1: individual variable minimisation
+            # if all variables have been refined, reset
+            if np.sum(np.abs(dydx)) < 1e-10:
+                dydx = np.ones(v.n_variables)
+            # Go through the variables looking at three points in the hope
+            # of capturing a minimum - if there is one, we take it and remove
+            # that variable from multidimensional refinement, dydx[i] = 0.
+            # Otherwise dydx[i] is the gradient for that variable.
+            # We also get a predicted best starting point
+            # for gradient descent, v.next_var
+            for i in range(v.n_variables):
+                # Skip variables already optimized
+                if abs(dydx[i]) < 1e-10:
+                    dydx[i] = 0.0
+                    continue
+                dydx[i] = sim.refine_single_variable(v, i)
+
+            # all variables have updated/predicted so do a final simulation
+            # if it's better, update v.best_fit and v.best_var accordingly
+            if np.count_nonzero(dydx) == 0:
+                print("Closing simulation for this cycle")
+                v.refined_variable = np.copy(v.next_var)
+                fom = sim.sim_fom(v, 0)
+                if (fom < v.best_fit):
+                    v.best_fit = fom*1.0
+                    v.best_var = np.copy(v.refined_variable)
+            print("Vector gradient descent")
+            # ===========step 2: vector descent
             # Downhill minimisation until we eliminate all variables
-            while np.sum(np.abs(p)) > 1e-10:
-                # the returned p will have an extra zero!
-                p = sim.refine_multi_variable(v, p)
+            while np.sum(np.abs(dydx)) > 1e-10:
+                # the returned dydx will have an extra zero!
+                dydx = sim.refine_multi_variable(v, dydx, False)
+        else:
+            raise ValueError("No valid refine method (0,1) in felix.inp")
+
         # Update for next iteration
         df = last_fit - v.best_fit
+
         last_fit = np.copy(v.best_fit)
         v.refined_variable = np.copy(v.best_var)
-        v.refinement_scale *= (1 - 1 / (2 * v.n_variables))
+        # reduce refinement scale for next round
+        v.refinement_scale *= (1 - 1 / (1 + v.n_variables))
         print(f"Improvement in fit {100*df:.2f}%, will stop at {100*v.exit_criteria:.2f}%")
+        print(f"Step size reduced to {v.refinement_scale:.6f}")
         print("-------------------------------")
-        plt.plot(v.fit_log)
-        # plt.scatter(var_pl, fit_pl)
-        plt.show()
-    
+        if v.plot >= 1: 
+            plt.plot(v.fit_log)
+            # plt.scatter(var_pl, fit_pl)
+            plt.show()
+
     print(f"Refinement complete after {v.iter_count} simulations.  Refined values: {v.best_var}")
 
-
 # %% final print
-sim.print_LACBED(v)
+sim.print_LACBED(v, 0)
 sim.save_LACBED(v)
+
 total_time = time.time() - start
 print("-----------------------------------------------------------------")
-# print(f"Beam pool calculation took {setup:.3f} seconds")
-
-# print(f"Bloch wave calculation in {bwc:.1f} s ({1000*(bwc)/(4*v.image_radius**2):.2f} ms/pixel)")
 print(f"Total time {total_time:.1f} s")
 print("-----------------------------------------------------------------")
 print("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
