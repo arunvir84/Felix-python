@@ -226,9 +226,9 @@ def kappa_factors(g_magnitude,Z,pv,kappa):
 #should handle values below 0.5 Q using kirkland values or some type of extrapolation
 
 #Z = 3  # Li
-Z = 8  # O
+Z = 41  # O
 #Z = 41 # Nb
-pv = 6  # 1 valence electron
+pv = 5  # 1 valence electron
 kappa = 0.9
 #pv of Nb is 5
 Q = np.linspace(0, 10, 10000)  # momentum transfer array 1/bohr  so this is actually g_magnitude 
@@ -240,6 +240,10 @@ f_kappa = kappa_factors(Q, Z, pv, kappa).ravel()
 
 f_kappa_1 = kappa_factors(Q, Z, pv, 1.1).ravel()
 
+f_kappa_2 = kappa_factors(Q, Z, pv, 1).ravel()
+
+f_kappa_3 = kappa_factors(Q, Z, pv, 1.3).ravel()
+
 f_kirkland = px.f_kirkland(Z, Q).ravel() 
 
 f_lobato = px.f_lobato(Z, Q).ravel() 
@@ -249,8 +253,10 @@ f_peng = px.f_peng(Z, Q).ravel()
 f_doyle_turner = px.f_doyle_turner(Z, Q).ravel() 
 #we get correct values when passing S to both kirkland and kappa factors rather than Q or g magnitude
 
-plt.plot(xsca, f_kappa, label='Kappa/PV')
-plt.plot(xsca, f_kappa_1, label='Kappa/PV')
+plt.plot(xsca, f_kappa, label='κ = 0.9')
+plt.plot(xsca, f_kappa_2, label='κ = 1.0')
+plt.plot(xsca, f_kappa_1, label='κ = 1.1')
+plt.plot(xsca, f_kappa_3, label='κ = 1.3', color = "purple")
 plt.plot(xsca, f_kirkland, label='Kirkland', linestyle='--')
 #plt.plot(xsca, f_lobato, label='Lobato', linestyle='--')
 #plt.plot(xsca, f_peng, label='Peng', linestyle='--')
