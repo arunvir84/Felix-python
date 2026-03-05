@@ -1214,8 +1214,8 @@ def Fg_matrix(xtal, basis, cell, bloch, rc):
                                                 g_magnitude)
         elif rc.scatter_factor_method == 4:
             print(f"Calculating kappa factor for atom {i+1}/{cell.n_atoms}")
-            basis.f_g[i, :, :] = f_kappa(g_magnitude,
-                                               i, basis.r2[i])
+            basis.f_g[i, :, :] = f_kappa(xtal, basis, g_magnitude,
+                                               i)
         else:
             raise ValueError("No scattering factors chosen in felix.inp")
 
@@ -1647,7 +1647,7 @@ def slater_orbitals(z, orbital, r):
     delta = delta / 0.52917721092
     # convert to angstrom
     C = np.array(fu.slater_coefficients[z][orbital]['coeff'])
-    n = int(orbital[0])
+    njl = np.array(fu.slater_coefficients[z][orbital]['n'])
 
     # for now we just state 1s contriutes to the core and 2s contributes
     # to valence with a respective electron occupation of 2,1
@@ -1664,10 +1664,9 @@ def slater_orbitals(z, orbital, r):
     # use Mott-Bethe formula to get to electron scattering factor
     # then compare with kirkland to check agreement and upscale
 
-    for cj, zj in zip(C, delta):
-        Nj = ((2*zj)**(n+0.5))/(np.sqrt(math.factorial(2*n)))
-        # each electron is defined by a primitive slater orbital of this form
-        S_j = Nj*r**(n-1)*np.exp(-zj*r)
+    for cj,zj,nj in zip(C,delta,njl):
+        Nj = ((2*zj)**(nj+0.5))/(np.sqrt(math.factorial(2*nj)))
+        S_j = Nj*r**(nj-1)*np.exp(-zj*r)          # each electron is defined by a primitive slater orbital of this form 
         R_total += cj*S_j
     # return the radial function for our atom, integrated to get form factor
     return R_total
@@ -1721,7 +1720,7 @@ def f_xray_valence(r, rho, S, pv, k):
     rho = np.asarray(rho, dtype=np.float64)
     S = np.asarray(S, dtype=np.float64)
 
-    scale = pv * (k**3)
+    scale = pv 
     return _form_factor_kernel(r, rho, S, scale)
 
 
@@ -1756,7 +1755,7 @@ def precompute_densities(Z, kappa, pv):
     core_density_n = core_density / np.trapz(4*np.pi*r**2*core_density, r)
 
     for i in valence_orbitals:
-        R = slater_orbitals(Z, i, r*kappa)
+        R = (kappa**(3/2))*slater_orbitals(Z, i, r*kappa)
         valence_density += (R**2)
     valence_density /= (4*np.pi)
     # need to normalize to 1 electron then scale by pv after
@@ -1764,7 +1763,7 @@ def precompute_densities(Z, kappa, pv):
                                                    * valence_density, r)
     pc = orbi['pc']
     # p_atom(r) in kappa formalism
-    density_total = pc*core_density_n + pv*kappa**3*valence_density_n
+    density_total = pc*core_density_n + pv*valence_density_n
     integrand = density_total*np.pi*r**2
     # mean square radius of electrons in the atom
     r2_expect = np.trapz(r**2*integrand, x=r)/np.trapz(integrand, x=r)
@@ -1781,11 +1780,10 @@ def slater_f_xray(xtal, basis, q, i):
     """
     rho_core = basis.core[i]
     rho_val = basis.valence[i]
-    r = np.linspace(1e-6, xtal.r_max, xtal.n_points)
-    pc = basis.pv[i]  # *** should this be pc??? ***
+    r = np.linspace(1e-6, xtal.r_max, xtal.n_points)  
     # precomputed densities
-    f_valence = f_xray_valence(r, rho_val, q, basis.pv, basis.kappa)
-    f_core = f_xray_core(r, rho_core, q, pc)
+    f_valence = f_xray_valence(r, rho_val, q, basis.pv[i], basis.kappa[i])
+    f_core = f_xray_core(r, rho_core, q, basis.pc[i])
     # fourier transform of the calculated radial funciton in 3d from 0 to inf
     f_x_total = f_core + f_valence
 
